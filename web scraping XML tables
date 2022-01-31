@@ -67,7 +67,7 @@ def scrape_page():
   
   
 """The duration field in my dataframe that was scraped from the SNMP GUI looks like this '4 days 08:39:05' ... since this is a string value and I need to be able to measure
-time difference then I need to convert this into seconds. I split the string at days so I can get the number before 'days', change it to an integer and multiply it by 1440(minutes in a day) 
+time difference then I need to convert this into minutes. I split the string at days so I can get the number before 'days', change it to an integer and multiply it by 1440(minutes in a day) 
 Then we split the time info that looks like this 'HH:MM:SS' ... I need to take each value in hour and multiply it by 60 and add the additional minutes in MM then take all that 
 and add it together with the day info. The result is clean but the code below looks ugly but after hours of searching this was the best way I found
 def correct_time():
