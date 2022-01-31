@@ -96,15 +96,16 @@ def alert_tech():
     if 'NC.CLT' in series['Node'] and 'Loss of communications' in series['Specific problem'] and series['Duration'] > 30 and series['Duration'] <240:
     """I'm iterating over each column in this row and looking for specific conditions. If the hostname matches and the alarm type is loss of communication
     and the alarm has been active for more than 30 minutes but less than 240 minutes then it will text the tech...
+    """
       message = client.messages \ 
                       .create(
                       body=str(series),
                       from+='9801231234',
                       to='8008881234')
                       
-  """
-  now that we have all these seperate functions working seperately we will but them inside the main function to use when our program is called
-  """
+"""
+now that we have all these seperate functions working seperately we will but them inside the main function to use when our program is called
+"""
   
   def main():
     while True:
