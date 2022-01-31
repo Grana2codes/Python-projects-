@@ -1,0 +1,129 @@
+"""We will be scraping a website that dynamically loads XML table data of current existing alarms using Javascript. Since this webpage is dynamically loaded with Javascript
+and is not static then we will have to use Selenium to navigate to our destination before we use BeautifulSoup to scrape the xml tagged data from the webpage. 
+In my case I used this to notify the field tech in the area if a site in their area is down. Since our network devices are named appropriately
+for it's respective area then this is simple enough to do with the snmp server info we will get from our web GUI 
+
+This is a javascript page that displays our NOC's SNMP alarms as an html table.
+
+You will need to check your browser's (I'm using Chrome) version and make sure you have corresponding selenium webdriver. It either needs to be in your working
+directory or %PATH%
+
+"""
+
+from bs4 import BeautifulSoup #will scrape the XML data from the page source code 
+import pandas as pd #will be used to convert our scraped/filtered data from XML to a dataframe
+from selenium import webdriver # allows us to navigate/authenticate on dynamic javascript page
+from selenium.webdriver.common.keys import Keys # used to simulate keyboard commands, example: Keys.ENTER
+from time import sleep # used to build delays to allow page to load
+
+username = ''
+password = ''
+
+Twilio_account_sid = "ACXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"
+Twilio_auth_token  = "your_auth_token"
+
+
+pd.set_option('display.max_rows', 500)
+pd.set_option('display.max_columns', 500)
+pd.set_option('display.width', 1000)  # used so we can verify our dataframe looks correct. Otherwise the output may be squished on our CLI 
+
+
+driver = webdriver.Chrome() # starts our automated web browser
+
+def go_to_page():
+ 
+  driver.get('http://10.1.1.1:8081') #goes to the landing page of where you're going to scrape data from, will need to complete authentication. This is an example
+"""
+to find the id of the object where you will place your username/password you should use your browser's developer's settings and inspect the field. You can use the keyboard
+shortcut CTRL+SHIFT+C in order to hover your mouse and click on it and it will take you to that code. If you have trouble finding an id tag for this field then alternatively
+you can copy the xpath and use that. 
+"""
+
+  driver.find_element_by_id('username').send_keys(username) 
+  driver.find_element_by_id('password').send_keys(password) 
+  driver.find_element_by_id('submit').click()
+
+"""in my case after authentication there was a page that displayed message of the day info such as the last time you logged in before taking you to the real landing page.
+in this case I used the xpath and instead of clicking on the button I sent the keyboard ENTER 
+"""
+
+  driver.find_element_by_xpath('//*[@id="logonConfirm"]/div[3]/button').send_keys(Keys.ENTER)
+"""When navigating a dynamic webpage you will likely have to simulate delays before proceeding to your next Python command, that way you are not trying to call an object on the 
+page which may have not loaded yet. There are more sophisticated ways of doing this but I chose to use sleep"""
+  sleep(5) 
+  driver.find_element_by_partial_link_text('Alarms').click() #clicks on alarm button which takes us to the information that we want to see
+  
+  """if you see a <thead> object when inspecting the page over the data that you want to scrape, this means that it is an XML table. It should be followed by <tr> which is table row,
+  and also <td> which contains the data for each column in your table for that specific row. 
+  This completes our go_to_page(): function. Now we want to scrape the data. 
+  """
+  
+def scrape_page():
+  scrape_page.soup = BeautifulSoup(driver.page_source, 'lxml') #creates a handle/object which is not yet filtered. It tells BeautifulSoup that we will be working with html source code in the format of lxml
+  scrape_page.tables = scrape_page.soup.find_all('table') #filters html code/objects that are in a table
+  scrape_page.dfs = pd.read_html(str(scrape_page.tables)) #takes this table info and converts it into a pandas dataframe
+  scrape_page.alarms_df = scrape_page.dfs[1] #in my case I got a list of dataframes. I had to specify that I need the second dataframe in the list(index 1)
+  scrape_page.alarms = scrape_page.alarms_df[['Node', 'Specific problem', 'Duration', 'Custom1']] #There are a lot of columns but I will only be working with four
+  
+  
+"""The duration field in my dataframe that was scraped from the SNMP GUI looks like this '4 days 08:39:05' ... since this is a string value and I need to be able to measure
+time difference then I need to convert this into seconds. I split the string at days so I can get the number before 'days', change it to an integer and multiply it by 1440(minutes in a day) 
+Then we split the time info that looks like this 'HH:MM:SS' ... I need to take each value in hour and multiply it by 60 and add the additional minutes in MM then take all that 
+and add it together with the day info. The result is clean but the code below looks ugly but after hours of searching this was the best way I found
+def correct_time():
+  correct_time.corrected_time = [] #we will put our corrected time info in this list 
+  for x in scrape_page.alarms['Duration']: #interates over each row in the column named 'Duration'
+      whole_time = x.split('days ') ; days_to_minutes = int(whole_time[0]) * 1440 # days to minutes
+      hours_minutes = whole_time[1] #rest of string that looks like 'HH:MM:SS'
+      hours_minutes_split = hours_minutes.split(':') #split again at each colon, now we can access each number between colons by index
+      hours = int(hours_minutes_split[0]) ; hours = hours * 60 # takes the HH, makes it into integer, and multiplies it into minutes
+      minutes = int(hours_minutes_split[1]) # takes the MM value and makes it an integer. Already in minutes so no need to do math
+      total_time = days_to_minutes + hours + minutes # takes the days to minutes, hours to minutes and minute information and adds it all together
+      correct_time.corrected_time.append(total_time) #after we have all this we will put it in a list so that we can then convert it into a pandas series and replace our 'Duration' column altogether
+    corected_time_column = pd.Series(correct_time.corrected_time) #converts our list to a pandas Series(one dimensional data set) 
+    scrape_page.alarms['Duration'] = corrected_time_column #replaces our column(which is a series) with our corrected time column series
+      
+      
+  ""this next part is for whatever you want to do once you have this data, in my case I wrote in conditions that would automatically text the field tech
+  if the specific site went down. For texting the tech I used an SMS service called TWilio which has an API and a Python package to send text messages. 
+  
+  
+def alert_tech():
+  index = scrape_page.alarms.shape[0] # this is our total number of rows. we are iterating over each row and checking the data
+  while index != 0:
+    index -= 1
+    series = scrape_page.alarms.loc[index]
+    if 'NC.CLT' in series['Node'] and 'Loss of communications' in series['Specific problem'] and series['Duration'] > 30 and series['Duration'] <240:
+    """I'm iterating over each column in this row and looking for specific conditions. If the hostname matches and the alarm type is loss of communication
+    and the alarm has been active for more than 30 minutes but less than 240 minutes then it will text the tech...
+      message = client.messages \ 
+                      .create(
+                      body=str(series),
+                      from+='9801231234',
+                      to='8008881234')
+                      
+  """
+  now that we have all these seperate functions working seperately we will but them inside the main function to use when our program is called
+  """
+  
+  def main():
+    while True:
+      go_to_page() #navigates through or page and authenticates
+      sleep(5)
+      scrape_page() #takes our html table data and converts it into dataframe
+      sleep(2)
+      correct_time() #corrects our time info in the 'Duration' column
+      sleep(1)
+      alert_tech() #sends a text message to field tech if alarm is present. 
+      sleep(1800)
+    
+    
+  if __name__ == "__main__":
+    main()
+      
+      
+  
+ 
+
+
+
