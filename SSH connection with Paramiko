@@ -1,0 +1,5 @@
+from paramiko import SSHClient, AutoAddPolicy # our connection handler and our host key exemption 
+from time import sleep #used to create delays 
+
+
+WIP 
