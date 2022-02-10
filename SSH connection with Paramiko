@@ -1,5 +1,97 @@
+"""
+if you want to write a program that will log into a device and check for a condition periodically you can use Paramiko. Paramiko is a low-level Python package which allows you to connect to a device via SSH. Paramiko is considered low level because it does not know to wait for a specified amount of time before an action is complete. If you try to use paramiko to, for example, take a snapshot of a network device's running config, depending on the device and the size of the config it might take several seconds for the device to generate the config and pass it to the python Paramiko package. In order to get this information accurately one should use the time.sleep function in order to create delays. 
+
+Paramiko only works with SSH. Because it works with SSH it will first check to see if the host key provided by device that it's attempting to connect to is known. If it is not known, the connection will not work. Therefore, unless the device you are running the Python script on already has the host key for the device that yo are connecting to you will have to let Paramiko know to proceed with unknown host keys. 
+
+The first section of the code only imports the classes of paramiko that we will be working on. AutoAddPolicy is to allow for unknown host keys and SSHClient is the handle that we will use to connect to the devices that we will be interacting with.
+
+With Regex, we are going to structure our unstructured data. Let's assume we have some text output where we've identified a particular device type that we want to check what the current operating system version is. 
+
+Our unstructured data is not tabular, it is just a jumble of text without any type of formatting ; 
+	 	Ciena 5100	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.1.38	161				ciena-3900		Mon Nov 15 11:20:56 EST 2021	Sun Nov 14 23:01:38 EST 2021	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.21.16.5	161				ciena-3900		Thu Feb 10 05:06:13 EST 2022	Wed Feb 09 06:31:47 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.131	161				ciena-3900		Thu Feb 10 05:24:18 EST 2022	Thu Feb 10 03:11:49 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.146	161				ciena-3900		Thu Feb 10 05:21:35 EST 2022	Thu Feb 10 02:18:03 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.28	161				ciena-3900		Thu Feb 10 05:27:43 EST 2022	Wed Feb 09 10:59:53 EST 2022	
+	 	Ciena 3900	All-OFF	med4	Snmpv2c	Direct		10.12.66.33	161				ciena-3900		Thu Feb 10 05:25:45 EST 2022	Wed Feb 09 06:42:54 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.68	161				ciena-3900		Thu Feb 10 05:25:13 EST 2022	Wed Feb 09 22:44:19 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.200	161				ciena-3900		Thu Feb 10 05:23:53 EST 2022	Wed Feb 09 23:13:16 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.32	161				ciena-3900		Thu Feb 10 05:27:21 EST 2022	Wed Feb 09 10:30:49 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.142	161				ciena-3900		Thu Feb 10 05:26:29 EST 2022	Wed Feb 09 07:05:03 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.113	161				ciena-3900		Thu Feb 10 05:17:35 EST 2022	Wed Feb 09 19:47:29 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.50	161				ciena-3900		Thu Feb 10 05:26:43 EST 2022	Wed Feb 09 10:59:12 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.82	161				ciena-3900		Thu Feb 10 05:27:20 EST 2022	Wed Feb 09 10:59:39 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.121	161				ciena-3900		Wed Nov 22 01:07:34 EST 2017	Tue Nov 21 14:55:56 EST 2017	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.132	161				ciena-3900		Thu Feb 10 05:26:29 EST 2022	Thu Feb 10 01:53:33 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.67.15	161				ciena-3900				
+		 	Ciena 3900	All-OFF	med4	Snmpv2c	Direct		10.12.11.101	161				ciena-3900		Thu Feb 10 05:25:41 EST 2022	Wed Feb 09 11:38:20 EST 2022	
+		 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.239	161				ciena-3900		Thu Feb 10 05:27:24 EST 2022	Wed Feb 09 23:01:21 EST 2022	
+			Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.1.175	161				ciena-3900		Wed Sep 25 09:06:42 EDT 2019	Tue Sep 24 16:14:51 EDT 2019	
+		 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct
+
+There is a lot more data here than we need. We'd prefer to only extract the IP address from this chunk of data. This can be easily accomplished using regex, which is a package that is automatically included with Python.
+
+We will use regex to take the jumble of text above and get a clean output like this:
+
+172.16.73.207
+172.16.73.102
+172.16.73.136
+172.16.73.72
+172.16.73.156
+172.16.73.55
+172.16.73.89
+172.16.73.87
+172.16.73.204
+
+
+"""
+
 from paramiko import SSHClient, AutoAddPolicy # our connection handler and our host key exemption 
 from time import sleep #used to create delays 
+import re # our regex package we will use to structure our data 
 
 
-WIP 
+data = """	 	Ciena 5100	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.1.38	161				ciena-3900		Mon Nov 15 11:20:56 EST 2021	Sun Nov 14 23:01:38 EST 2021	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.21.16.5	161				ciena-3900		Thu Feb 10 05:06:13 EST 2022	Wed Feb 09 06:31:47 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.131	161				ciena-3900		Thu Feb 10 05:24:18 EST 2022	Thu Feb 10 03:11:49 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.146	161				ciena-3900		Thu Feb 10 05:21:35 EST 2022	Thu Feb 10 02:18:03 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.28	161				ciena-3900		Thu Feb 10 05:27:43 EST 2022	Wed Feb 09 10:59:53 EST 2022	
+	 	Ciena 3900	All-OFF	med4	Snmpv2c	Direct		10.12.66.33	161				ciena-3900		Thu Feb 10 05:25:45 EST 2022	Wed Feb 09 06:42:54 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.68	161				ciena-3900		Thu Feb 10 05:25:13 EST 2022	Wed Feb 09 22:44:19 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.200	161				ciena-3900		Thu Feb 10 05:23:53 EST 2022	Wed Feb 09 23:13:16 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.32	161				ciena-3900		Thu Feb 10 05:27:21 EST 2022	Wed Feb 09 10:30:49 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.142	161				ciena-3900		Thu Feb 10 05:26:29 EST 2022	Wed Feb 09 07:05:03 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.113	161				ciena-3900		Thu Feb 10 05:17:35 EST 2022	Wed Feb 09 19:47:29 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.50	161				ciena-3900		Thu Feb 10 05:26:43 EST 2022	Wed Feb 09 10:59:12 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.11.82	161				ciena-3900		Thu Feb 10 05:27:20 EST 2022	Wed Feb 09 10:59:39 EST 2022	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.1.121	161				ciena-3900		Wed Nov 22 01:07:34 EST 2017	Tue Nov 21 14:55:56 EST 2017	
+	 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct		172.16.10.132	161				ciena-3900		Thu Feb 10 05:26:29 EST 2022	Thu Feb 10 01:53:33 EST 2022	
+	 	Ciena 3900	All-OFF	med3	Snmpv2c	Direct		10.12.67.15	161				ciena-3900				
+		 	Ciena 3900	All-OFF	med4	Snmpv2c	Direct		10.12.11.101	161				ciena-3900		Thu Feb 10 05:25:41 EST 2022	Wed Feb 09 11:38:20 EST 2022	
+		 	Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.10.239	161				ciena-3900		Thu Feb 10 05:27:24 EST 2022	Wed Feb 09 23:01:21 EST 2022	
+			Ciena 3900	All-OFF	nmsvm-centina-med2	Snmpv2c	Direct		172.16.1.175	161				ciena-3900		Wed Sep 25 09:06:42 EDT 2019	Tue Sep 24 16:14:51 EDT 2019	
+		 	Ciena 3900	All-OFF	nmsvm-centina-med1	Snmpv2c	Direct 
+      """
+      
+  IPs = re.findall(r'\d+\.\d+\.\d+\.\d+', data)
+  username = input('Enter your username: ')
+  password = input('Enter your password: ')
+  
+  client = SSHClient()
+  client.set_missing_host_key_policy(AutoAddPolicy())
+  
+  for x in IPs:
+      client.connect(x, username = username, password = password)
+      sleep(3)
+      stdin, stdout, stderr = client.exec_command('software show')
+      sleep(5)
+      print(stdout.readlines())
+      
+      
+
+#this code can be further improved by using threading in order to have each iteration run sperately on the same core. I'll add an example of that soon!
+#If you need to pass more than one command to the device, such as a list of commands, you should use client.invoke_shell()
+  
+          
+
+
