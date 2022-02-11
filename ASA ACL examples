@@ -1,0 +1,336 @@
+Cisco ASA (IOS) ACLs 
+
+
+ACL requests;
+
+list of firewalls and login info is found on the flip file; http://192.168.205.111/Operations%20Center%20FlipFile%20v7/MiscResources/DETELmanagedfirewall.html
+
+For every ACL request, you must have the following information from the customer:
+
+
+What source IP What destination IP(or FQDN) What ports(TCP and/or UDP)
+
+
+before you make any changes to the customer firewall, first check what rules are currently present by using the packet-tracer command. The packet-tracer command uses almost the same syntax as when you configure an ACL.
+
+To use the packet-tracer command, you must be in privileged mode on the Cisco.
+
+
+packet-tracer input inside udp 10.100.5.163 5020 34.195.52.88 5020
+
+
+packet-tracer input | inside | udp | 10.100.5.163 | 5020 | 34.195.52.88 | 5020 always the same source of traffic port type source IP source port destination IP destination port
+
+
+The source port of the customer's inside network does not matter, but in order to prevent mistakes keep it the same as the destination port you are working with.
+
+If the traffic is allowed you will see something similar to this;
+
+Phase: 2 Type: ACCESS-LIST Subtype: log Result: ALLOW Config: access-group inside_access_in in interface inside access-list inside_access_in extended permit ip object-group velo any object-group network velo
+
+description: Velo Hospital
+network-object host 10.100.5.163
+network-object host 10.20.2.121
+This says that the traffic was matched to an ACL and ALLOWED. The ACL that permitted this traffic is the following line; access-list inside_access_in extended permit ip object-group velo any
+
+This ACL references an object-group, which is a group of objects defined inside of a list. The list is referenced in one ACL, instead of having to make many ACLs for requests with many IPs/ports/FQDNs.
+
+
+description: Velo Hospital
+network-object host 10.100.5.163
+network-object host 10.20.2.121
+This part describes what objects are defined in your ACL's object group that is referenced in the ACL..
+
+
+
+Here is another example. A customer has requested that he be allowed to reach destination espn.com on TCP port 80. First you check if the traffic is currently being allowed or denied. If you want to test from inside the customer's network but do not have an internal IP to test from you can pick any IP that is defined in the customer's inside interface show interface inside or show inside interface | include address
+
+       IP address 172.16.66.1, subnet mask 255.255.255.248
+This says that the "inside" or the trusted zone of this firewall is the 172.16.66.1 / 29 network. If you see a small network like this it usually means there is a routed network, like the following
+
+Cisco_firewall#show ip route
+
+S 10.0.0.0 255.0.0.0 [1/0] via 172.16.66.2, inside
+
+The customer has a 10.x.x.x /8 network. This network is routed through the /29 network you have configured on the interface that is facing towards the customer
+
+note that you CANNOT pick the first IP address in the network, it will cause your packet-tracer tests to fail. This is because it is not
+
+I want to test if I can reach espn.com from the customer's network on port 80(HTTP)
+
+
+SLPSB-FW# packet-tracer input inside tcp 10.50.254.2 80 fqdn espn.com 80
+
+
+
+Phase: 3 Type: ACCESS-LIST Subtype: log Result: ALLOW Config: access-group Inside in interface inside access-list Inside remark General Web Browsing access-list Inside extended permit tcp any any eq www Additional Information:
+
+
+SLPSB-FW# packet-tracer input inside tcp 10.50.254.2 81 fqdn espn.com 81
+
+
+The output from the packet-tracer command will show you if it passed or failed, and also HOW it passed or failed. In the next example, I changed the destination port to 81.
+
+Phase: 3 Type: ACCESS-LIST Subtype: log Result: DROP Config: access-group Inside in interface inside access-list Inside extended deny ip any any Additional Information:
+
+This time it failed, it and it shows that it specifically failed because it was matched to an ACL which denies the traffic. This firewall has an ACL that denies any traffic coming from the inside network to the outside. This ACL is actually redundant because this traffic would be automatically denied anyways due to Cisco firewalls' implicit deny rule -- Once an ACL is created and any statement is made inside the ACL, everything else that is not explicitly allowed by the firewall will be implicitly denied.
+
+Anytime you receive a request from the customer you should first check with the packet-tracer command if/how it fails. Sometimes a customer will make a request and it's been requested before so it's already allowed. Sometimes the ACL was configured per the customer's request but the customer did not provide us with the correct information needed. Most of the requests that we receive from the customer are simply forwarded requests from the vendor(s) that our customers use.
+
+If the customer calls and makes a request like "Please open port 22 on 10.1.1.236" -- ask the customer to be as explicit as possible. IF the customer is working with a vendor in setting up a new service, it may be beneficial to work directly with the customer's vendor> Often the customer is working off a list of requests that the vendor made to them to allow the service and they may be paraphrasing the request by asking us to complete "our part" of the request, without being aware that additional configuration may be necessary depending on what they are trying to achieve, such as static NAT rules.
+
+
+ACL / packet tracer syntax:
+
+
+The syntax for ACLs is the same / similar as the syntax for the packet-tracer command.
+
+You have to specify the source/direction of the traffic, the type of traffic, the source IP and port(s) and the destination IPs and port(s). Whether the request is coming in from the internet destined to the customer network or coming from the customer network destined to the internet, the structure of the commands does not change but the order of the syntax does.
+
+SLPSB-FW# packet-tracer input inside tcp 10.50.254.2 80 fqdn espn.com 80
+
+SLPSB-FW# packet-tracer input outside tcp fqdn espn.com 80 10.50.254.3 80
+
+
+This is checking if traffic from espn.com is allowed to reach 10.50.254.3 on port 80. The syntax of the command did not change but the order changed. Whether the source is inside or outside, the source will always go first, followed by the destination.
+
+
+
+
+Grouping ports or IP addresses into objects and object-groups:
+
+Sometimes a customer will give you a request to allow traffic to a long list of IPs on specific ports. The list of IPs may be long as well as the list of ports that they are asking to be allowed.
+
+You could make an ACL allowing each source IP to each destination IP and then do the same thing for each port that it needs to be able to connect to, but this is unorderly, will consume a lot of your time, and is difficult to change/update.
+
+
+If a customer is setting up some automatic server backups, he might have a long list of public IP hosts that he needs to be able to connect to. Instead of writing an ACL for each destination host and port(s), you can group all the IPs that the customer is requesting under an object.
+
+objects can be nested inside of object-groups, or they can be independent. But to call many different objects in one ACL, they need to be nested inside of an object-group.
+
+The first type of object-group that you see below is "service" type. This means that it specifies a group of TCP/UDP ports/services. This can also be either TCP, UDP or both.
+
+
+
+
+SLPSB-FW# show run | b object-group object-group service VideoTCP tcp
+
+port-object eq 2776
+port-object eq h323
+port-object eq www
+object-group service VideoUDP udp
+
+port-object eq 2776
+port-object eq 2777
+port-object eq 1719
+object-group service Blocked-Ports-TCP tcp
+
+port-object eq 445
+port-object eq 447
+port-object eq 449
+port-object eq 8082
+object-group service Blocked-Ports-UDP udp
+
+port-object eq 445
+port-object eq 447
+port-object eq 449
+port-object eq 8082
+object-group network Barracuda-Central
+
+network-object 216.129.105.0 255.255.255.0
+network-object 216.129.125.192 255.255.255.192
+network-object 205.158.110.0 255.255.255.128
+network-object 64.235.144.0 255.255.240.0
+network-object 209.222.80.0 255.255.248.0
+network-object 74.217.37.0 255.255.255.0
+network-object 209.124.61.96 255.255.255.224
+network-object 204.156.124.128 255.255.255.255
+network-object 212.118.243.148 255.255.255.255
+network-object 204.14.15.41 255.255.255.255
+network-object 206.180.126.10 255.255.255.255
+network-object 209.18.50.242 255.255.255.255
+network-object 69.7.235.214 255.255.255.255
+network-object 216.162.80.57 255.255.255.255
+network-object 216.129.105.129 255.255.255.255
+network-object 205.158.110.60 255.255.255.255
+object-group network Barracuda-Devices
+
+network-object object Barracuda-MA
+network-object object Barracuda-Spam-Filter
+network-object object Barracuda-Backup-Remote
+
+
+
+
+In order to be able to write an ACL that references an FQDN(Fully Qualified Domain Name), it needs to be created as an object, like so;
+
+SLPSB-FW(config)# object network test SLPSB-FW(config-network-object)# fqdn testing.com
+
+SLPSB-FW(config-network-object)# show run | b object network test object network test
+
+fqdn testing.com
+
+The first command simply creates the network object and names it "test" The second command creates the FQDN object. The object will be called when the "test" object is referenced.
+
+The third command verifies our configuration. Our fqdn testing.com line of config is nested inside of a network object called "test".
+
+
+There are a few types of objects and object-groups, but the only ones that we will work with are network and service.
+
+Network objects or object-groups are for referencing IP addresses or FQDNs Service objects or object-groups are for referencing ports.
+
+Here is another object-group, this one contains two network objects which are FQDNs. The name of the object-group is scenariolearning and the objects are nested inside of the object group.
+
+object-group network scenariolearning
+
+network-object object outbound.scenariolearningtraining.com
+network-object object hq.scenariolearning.com
+
+The last thing that you need to understand before you are able to write ACLs is in what direction the ACL is being applied. But first, a few more basics: Every firewall has an inside and an outside zone. The inside zone is "trusted" and has a default security-level of 100. This means that traffic that is received from the inside is trusted by the firewall -- you will never have to allow traffic for the customer so that they can connect to a local webserver for example. If the traffic is coming from the outside interface, the outside interface as a default security-level of 0. This means that none of the traffic is allowed from the Internet unless it's explicitly allowed by an ACL. In other deployments, a customer may have different zones that are trusted. Looking at the firewall we're logged into right now, the customer has 4 zones. The outside is not trusted because it has a security-level of 0. The inside is trusted, because it has a security level of 100. The customer has another zone or network called Mitel(customer phone system) which is mostly trusted, and a DMZ which is semi-trusted.
+
+
+
+SLPSB-FW# show run interface ! interface Ethernet1/1
+
+nameif outside
+security-level 0
+ip address 69.63.165.194 255.255.255.192
+! interface Ethernet1/2
+
+nameif inside
+security-level 100
+ip address 10.50.254.2 255.255.255.0
+! interface Ethernet1/3
+
+nameif dmz
+security-level 50
+ip address 172.20.100.1 255.255.255.0
+! interface Ethernet1/4
+
+nameif Mitel
+security-level 90
+ip address 172.20.200.1 255.255.255.0
+! interface Ethernet1/5
+
+nameif TEMPDMZ
+security-level 10
+ip address 192.168.199.1 255.255.255.0
+
+
+how does the firewall know the direction that the ACL is being applied? 
+Any ACL you write has to be nested inside of an access-group. This allows the firewall to understand in which direction/capacity the ACL is being applied. If the ACL you are writing affects traffic coming from the inside network to the outside it will be one particular access-group, if vice versa then it will be another.
+
+often, the name that is given to the access-group is self-explanatory. In Conterra firewalls, traffic that is destined out to the internet is often called outbound-new, and traffic that is coming from the internet to the network is called Internet
+
+you should always check how these are configured. There is nothing that is "safe to assume" when working with firewalls. You can check the configuration of access-groups like so;
+
+show run | include access-group
+
+access-group DMZ in interface dmz access-group Internet in interface outside access-group outbound-new in interface inside
+
+the syntax of how the access-groups read are straightforward access-group DMZ identifies traffic that comes in from the dmz interface access-group internet identifies traffic that comes in from the outside interface (outside to inside) access-group outbound-new identifies traffic that comes in from the inside interface (customer network/internal to outside)
+
+
+
+If you are writing an ACL and the source or destination is one IP address, you can preface the IP address by the word "host", which lets the ASA know that this will apply only to the single IP that you are defining. Otherwise, the ASA will require that you provide the wildcard mask (inverse of subnet mask) to define the size of the network.
+
+
+Configuration examples;
+
+
+The customer is needing to share files with a partner/vendor. They are requesting that TCP ports 21 and 22 from 10.50.20.6 are allowed so that they can share files with education.org, as well as good.education.org The customer also needs to be able to RDP to the rdp.education.org domain. RDP uses UDP port 3389.
+
+First, we test if/how it fails:
+
+packet-tracer input inside tcp 10.50.20.6 21 fqdn education.org 21
+
+Phase: 3 Type: ACCESS-LIST Subtype: Result: DROP Config: Implicit Rule Additional Information:
+
+
+This tells us that the traffic is not allowed because it's being rejected by the firewall's implicit deny rule. This means that an ACL allowing this permission needs to be explicitly defined for this traffic to work.
+
+You will see the same failure if you test port 22.
+
+Now I want to test if we are able to RDP to rdp.education.org. RDP uses UDP port 3389, so we will need to make sure we change the syntax of our command to be UDP now instead of TCP
+
+
+APSB-FW# packet-tracer input inside udp 10.50.20.6 3389 fqdn education.org 3389
+
+This too will fail with implicit deny. I will exclude the output so this is not so cluttered. We need to be able to order this request so that it takes the least amount of ACLs as possible. We will group whatever ports we can together as well as destinations.
+
+Since ports 21 and 22 are both TCP, I can group them together inside of a service object-group
+
+APSB-FW(config)# object-group service test ?
+
+configure mode commands/options:
+
+ tcp      Specifies this object-group is for TCP protocol only
+ tcp-udp  Specifies this object-group is for both TCP & UDP
+ udp      Specifies this object-group is for UDP protocol only
+
+Note that the service object-group gives you some options. The ports specified inside the object group can either be defined as TCP, UDP, or both. For the purposes of being as precise as possible, we will not open any unnecessary ports which may pose a risk to the customer. Since 21 and 22 are both TCP customers, we will put them in one object-group
+
+APSB-FW(conf)#object-group service test_ports tcp APSB-FW(config-service-object-group)# port-object eq 21 APSB-FW(config-service-object-group)# port-object eq 22
+
+
+APSB-FW#
+
+
+This created two TCP ports, 21 and 22, which can be referenced by calling the object-group named "test"
+
+It is your choice if you want to create an object for a single port(3389) but it will not shorten the number of ACLs you will write.
+
+The customer needs to be able to connect to a few FQDNs; education.org rdp.education.org good.education.org
+
+If you define the domain, you do not have to create different FQDN objects for each subdomain. For example, if you create an ACL that allows traffic sent to education.org, you do not need to make one for good.education.org or rdp.education.org.
+
+Defining the FQDN in an object; APSB-FW(config)# object network test_fqdn APSB-FW(config-network-object)# fqdn education.org
+
+
+Writing the ACL
+
+Check your access-group config to make sure which direction you are applying the ACL
+
+APSB-FW# show run | i access-group access-group DMZ in interface dmz access-group Internet in interface outside access-group outbound-new in interface inside
+
+
+This is traffic that is coming in from the inside interface(from the customer) destined out to the outside so we will apply the ACL to the access-group called "outbound-new"
+
+access-list outbound-new host 10.50.20.6 any object test_fqdn object-group test_ports
+
+you'll have to keep track of what you placed where, but in test_fqdn we put the education.org FQDN, and in test_ports, we put the TCP ports that we will be referencing. Now we can check again if our configuration is allowing this traffic;
+
+
+APSB-FW# packet-tracer input inside tcp 10.50.20.6 21 fqdn education.org 21 Mapping FQDN education.org to IP address 72.167.191.69
+
+Phase: 1 Type: ACCESS-LIST Subtype: Result: ALLOW Config: Implicit Rule Additional Information: MAC Access list
+
+Phase: 2 Type: ROUTE-LOOKUP Subtype: Resolve Egress Interface Result: ALLOW Config: Additional Information: found next-hop 69.63.165.33 using egress ifc outside
+
+Phase: 3 Type: ACCESS-LIST Subtype: log Result: ALLOW Config: access-group outbound-new in interface inside access-list outbound-new extended permit tcp host 10.50.20.6 object test_fqdn object-group test log object-group service test tcp
+
+port-object eq ftp
+port-object eq ssh
+
+
+This confirms that traffic is being allowed from the customer's host ip 10.50.20.6 to reach fqdn education.org with ports 21 and 22.
+
+The ASA will sometimes take the ports that you give it and rename it. For example, it will rename port 80 as www, port 21 as ftp, port 22 as ssh, etc. But this does not change what the port can be used for.
+
+Now we write the ACL that permits RDP to the education.org domain
+
+access-list outbound-new extended permit udp host 10.50.20.6 object test_fqdn eq 3389
+
+
+We could have defined port 3389 inside of an object but it would be unnecessary so for simplicity's sake we defined it in the ACL.
+
+APSB-FW# packet-tracer input inside udp 10.50.20.6 3389 fqdn rdp.education.org 3389
+
+
+Phase: 3 Type: ACCESS-LIST Subtype: log Result: ALLOW Config: access-group outbound-new in interface inside access-list outbound-new extended permit udp host 10.50.20.6 object test_fqdn eq 3389 log Additional Information:
+
+
+Now this request has passed. In the packet-tracer command we also had to change the type of traffic to UDP in order to test this correctly.
+
+
+Now you should be able to configure ACLs, define objects and object-groups, and test with the packet-tracer command whether traffic is passing or failing.
